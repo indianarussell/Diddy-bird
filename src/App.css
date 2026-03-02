@@ -1,0 +1,22 @@
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  /* Prevents scrollbars */
+  background-color: #222;
+}
+
+.game-area {
+  width: 100vw;
+  /* Full viewport width */
+  height: 100vh;
+  /* Full viewport height */
+  position: relative;
+  overflow: hidden;
+  background-color: skyblue;
+  cursor: pointer;
+  border: none;
+  /* Removed border to prevent size calculation issues */
+}
