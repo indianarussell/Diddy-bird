@@ -7,9 +7,15 @@ const PIPE_WIDTH_RATIO = 0.08; // 8% of screen width
 const PIPE_GAP_RATIO = 0.45; // Easy gap
 const GRAVITY = 0.5;
 const JUMP_STRENGTH = -8;
-const PIPE_SPEED = 5;
+const PIPE_SPEED = 6;
 
 function App() {
+  const [highScore, setHighScore] = useState(() => {
+    // Check "EEPROM" (Local Storage) on boot
+    const saved = localStorage.getItem('diddyHighScore');
+    return saved ? parseInt(saved) : 0;
+  });
+
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [birdPosition, setBirdPosition] = useState(0);
   const [velocity, setVelocity] = useState(0);
@@ -93,6 +99,17 @@ function App() {
 
       if (birdHitsFloor || birdHitsCeiling || hitsTopPipe || hitsBottomPipe) {
         setGameState('gameOver');
+
+        setScore(finalScore => {
+          // Check if the current game's score is better than the stored high score
+          if (finalScore > highScore) {
+            setHighScore(finalScore);
+            localStorage.setItem('diddyHighScore', finalScore.toString());
+          }
+          return finalScore;
+        });
+
+
       } else {
         setBirdPosition(newPosition);
         setVelocity(newVelocity);
@@ -132,6 +149,7 @@ function App() {
       {gameState === 'idle' && (
         <div style={screenStyle}>
           <h1>DIDDY BIRD</h1>
+          <h3 style={{ color: '#FFD700' }}>Best: {highScore}</h3>
           <button onClick={startGame} style={{ padding: '10px 20px', fontSize: '20px' }}>START (Space)</button>
         </div>
       )}
@@ -141,6 +159,7 @@ function App() {
         <div style={screenStyle}>
           <h1>GAME OVER</h1>
           <h2>Score: {score}</h2>
+          <h3 style={{ color: '#FFD700', marginTop: '0' }}>High Score: {highScore}</h3>
           <button onClick={startGame} style={{ padding: '10px 20px', fontSize: '20px' }}>RESTART (Space)</button>
         </div>
       )}
@@ -180,7 +199,9 @@ function App() {
               position: 'absolute',
               top: 0,
               left: pipePosition,
-              transform: 'rotate(180deg)'
+              transform: 'rotate(180deg)',
+              objectFit: 'cover',
+              objectPosition: 'bottom',
             }}
           />
           <img
@@ -192,6 +213,8 @@ function App() {
               position: 'absolute',
               bottom: 0,
               left: pipePosition,
+              objectFit: 'cover',
+              objectPosition: 'top',
             }}
           />
         </>
