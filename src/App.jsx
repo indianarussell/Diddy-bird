@@ -1,17 +1,52 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import './App.css';
 
-// --- CONFIGURATION ---
-const BIRD_SIZE_RATIO = 0.05; // 5% of screen height
-const PIPE_WIDTH_RATIO = 0.08; // 8% of screen width
-const PIPE_GAP_RATIO = 0.45; // Easy gap
+// --- CONFIG ---
+const BIRD_SIZE_RATIO = 0.07;
+const PIPE_WIDTH_RATIO = 0.09;
+const PIPE_GAP_RATIO = 0.30;
 const GRAVITY = 0.5;
 const JUMP_STRENGTH = -8;
-const PIPE_SPEED = 6;
+const PIPE_SPEED = 7;
+const WIN_SCORE = 10;
+
+// Spark colors for win screen
+const SPARK_COLORS = ['#fbbf24', '#a855f7', '#ec4899', '#34d399', '#60a5fa'];
+
+function Sparks() {
+  const sparks = Array.from({ length: 24 }, (_, i) => ({
+    id: i,
+    color: SPARK_COLORS[i % SPARK_COLORS.length],
+    left: `${Math.random() * 100}%`,
+    top: `${Math.random() * 100}%`,
+    tx: `${(Math.random() - 0.5) * 300}px`,
+    ty: `${(Math.random() - 0.5) * 300}px`,
+    delay: `${Math.random() * 0.6}s`,
+  }));
+
+  return (
+    <div className="win-sparks">
+      {sparks.map(s => (
+        <div
+          key={s.id}
+          className="spark"
+          style={{
+            background: s.color,
+            left: s.left,
+            top: s.top,
+            '--tx': s.tx,
+            '--ty': s.ty,
+            animationDelay: s.delay,
+            boxShadow: `0 0 6px ${s.color}`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
 
 function App() {
   const [highScore, setHighScore] = useState(() => {
-    // Check "EEPROM" (Local Storage) on boot
     const saved = localStorage.getItem('diddyHighScore');
     return saved ? parseInt(saved) : 0;
   });
@@ -22,203 +57,259 @@ function App() {
   const [pipePosition, setPipePosition] = useState(0);
   const [pipeHeight, setPipeHeight] = useState(0);
   const [score, setScore] = useState(0);
+  const [isNewRecord, setIsNewRecord] = useState(false);
+  const [birdRotation, setBirdRotation] = useState(0);
+  const [showWinFlash, setShowWinFlash] = useState(false);
+  const [paused, setPaused] = useState(false);
 
-  // Game State: 'idle' (start screen), 'running', 'gameOver'
+  // gameState: 'idle' | 'running' | 'gameOver' | 'win'
   const [gameState, setGameState] = useState('idle');
 
-  const startGame = () => {
+  const startGame = useCallback(() => {
     setBirdPosition(dimensions.height / 2);
     setPipePosition(dimensions.width);
+    setPipeHeight(
+      Math.random() * (dimensions.height * 0.4) + dimensions.height * 0.15
+    );
     setScore(0);
     setVelocity(0);
+    setIsNewRecord(false);
+    setBirdRotation(0);
+    setShowWinFlash(false);
+    setPaused(false);
     setGameState('running');
-  };
+  }, [dimensions]);
 
-  // --- JUMP FUNCTION ---
   const jump = useCallback(() => {
-    if (gameState === 'running') {
-      setVelocity(JUMP_STRENGTH);
-    }
+    if (gameState === 'running') setVelocity(JUMP_STRENGTH);
   }, [gameState]);
 
-  // --- MEASURE SCREEN SIZE ON LOAD ---
+  // Measure game area
   useEffect(() => {
-    const updateDimensions = () => {
-      const gameArea = document.querySelector('.game-area');
-      if (gameArea) {
-        setDimensions({ width: gameArea.offsetWidth, height: gameArea.offsetHeight });
-      }
+    const update = () => {
+      const el = document.querySelector('.game-area');
+      if (el) setDimensions({ width: el.offsetWidth, height: el.offsetHeight });
     };
-    updateDimensions();
-    window.addEventListener('resize', updateDimensions);
-    return () => window.removeEventListener('resize', updateDimensions);
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
   }, []);
 
-  // --- GAME LOOP ---
+  // Game loop
   useEffect(() => {
-    if (gameState !== 'running' || dimensions.height === 0) return;
+    if (gameState !== 'running' || dimensions.height === 0 || paused) return;
 
-    const gameTimer = setInterval(() => {
-      // 1. Physics: Bird Movement
+    const timer = setInterval(() => {
       const newVelocity = velocity + GRAVITY;
-      const newPosition = birdPosition + newVelocity;
+      const newBirdPos = birdPosition + newVelocity;
 
-      // 2. Physics: Pipe Movement
-      let newPipePosition = pipePosition - PIPE_SPEED;
+      // Bird rotation based on velocity
+      const rotation = Math.min(Math.max(newVelocity * 4, -30), 80);
+      setBirdRotation(rotation);
 
-      // A. SPAWN LOGIC: Reset pipe to right side only when it leaves screen left
-      if (newPipePosition < -dimensions.width * PIPE_WIDTH_RATIO) {
-        newPipePosition = dimensions.width;
-        setPipeHeight(Math.random() * (dimensions.height * 0.5) + dimensions.height * 0.1);
+      let newPipePos = pipePosition - PIPE_SPEED;
+
+      // Respawn pipe
+      if (newPipePos < -(dimensions.width * PIPE_WIDTH_RATIO)) {
+        newPipePos = dimensions.width;
+        setPipeHeight(
+          Math.random() * (dimensions.height * 0.4) + dimensions.height * 0.15
+        );
       }
 
-      // B. SCORE LOGIC: Increment score ONLY when bird passes pipe center
+      // Score point
       if (
         pipePosition > dimensions.width * 0.1 &&
-        newPipePosition <= dimensions.width * 0.1
+        newPipePos <= dimensions.width * 0.1
       ) {
-        setScore(s => s + 1);
+        setScore(s => {
+          const next = s + 1;
+          if (next === WIN_SCORE) {
+            setShowWinFlash(true);
+            setPaused(true);
+            if (next > highScore) {
+              setHighScore(next);
+              setIsNewRecord(true);
+              localStorage.setItem('diddyHighScore', next.toString());
+            }
+          }
+          return next;
+        });
       }
 
-      // 3. Collision Detection
-      const birdTop = newPosition;
-      const birdBottom = newPosition + (dimensions.height * BIRD_SIZE_RATIO);
+      // Collision
+      const birdSize = dimensions.height * BIRD_SIZE_RATIO;
+      const birdTop = newBirdPos;
+      const birdBottom = newBirdPos + birdSize;
       const birdLeft = dimensions.width * 0.1;
-      const birdRight = birdLeft + (dimensions.height * BIRD_SIZE_RATIO);
-
-      const pipeLeft = newPipePosition;
-      const pipeRight = newPipePosition + (dimensions.width * PIPE_WIDTH_RATIO);
+      const birdRight = birdLeft + birdSize;
+      const pipeLeft = newPipePos;
+      const pipeRight = newPipePos + dimensions.width * PIPE_WIDTH_RATIO;
       const topPipeBottom = pipeHeight;
-      const bottomPipeTop = dimensions.height - (dimensions.height - pipeHeight - (dimensions.height * PIPE_GAP_RATIO));
+      const bottomPipeTop = pipeHeight + dimensions.height * PIPE_GAP_RATIO;
+      const groundTop = dimensions.height - 60;
 
-      const birdHitsFloor = birdBottom > dimensions.height;
-      const birdHitsCeiling = birdTop < 0;
-      const birdInPipeX = birdRight > pipeLeft && birdLeft < pipeRight;
-      const hitsTopPipe = birdInPipeX && birdTop < topPipeBottom;
-      const hitsBottomPipe = birdInPipeX && birdBottom > bottomPipeTop;
+      const hitFloor = birdBottom > groundTop;
+      const hitCeiling = birdTop < 0;
+      const inPipeX = birdRight > pipeLeft && birdLeft < pipeRight;
+      const hitTopPipe = inPipeX && birdTop < topPipeBottom;
+      const hitBottomPipe = inPipeX && birdBottom > bottomPipeTop;
 
-      if (birdHitsFloor || birdHitsCeiling || hitsTopPipe || hitsBottomPipe) {
+      if (hitFloor || hitCeiling || hitTopPipe || hitBottomPipe) {
         setGameState('gameOver');
-
         setScore(finalScore => {
-          // Check if the current game's score is better than the stored high score
           if (finalScore > highScore) {
             setHighScore(finalScore);
+            setIsNewRecord(true);
             localStorage.setItem('diddyHighScore', finalScore.toString());
           }
           return finalScore;
         });
-
-
       } else {
-        setBirdPosition(newPosition);
+        setBirdPosition(newBirdPos);
         setVelocity(newVelocity);
-        setPipePosition(newPipePosition);
+        setPipePosition(newPipePos);
       }
-    }, 24);
+    }, 20);
 
-    return () => clearInterval(gameTimer);
-  }, [gameState, birdPosition, velocity, pipePosition, dimensions, pipeHeight]);
+    return () => clearInterval(timer);
+  }, [gameState, birdPosition, velocity, pipePosition, dimensions, pipeHeight, highScore, paused]);
 
-  // --- KEYBOARD INPUT HANDLER ---
+  // Keyboard
   useEffect(() => {
-    const handleKeyPress = (e) => {
+    const handleKey = (e) => {
       if (e.code === 'Space') {
+        e.preventDefault();
         if (gameState === 'running') jump();
-        else if (gameState === 'idle' || gameState === 'gameOver') startGame();
+        else if (gameState === 'idle' || gameState === 'gameOver' || gameState === 'win') startGame();
       }
     };
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [gameState, jump]);
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [gameState, jump, startGame]);
 
-  // Styling for centered screens
-  const screenStyle = {
-    position: 'absolute',
-    top: 0, left: 0, width: '100%', height: '100%',
-    display: 'flex', flexDirection: 'column',
-    justifyContent: 'center', alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    color: 'white', zIndex: 20
-  };
+  const birdSize = dimensions.height * BIRD_SIZE_RATIO;
+  const progressWidth = Math.min((score / WIN_SCORE) * 100, 100);
 
   return (
-    <div className="game-area" onClick={jump} style={{ position: 'relative', overflow: 'hidden', background: 'skyblue' }}>
+    <div className="game-area" onClick={jump}>
+
+      {/* Progress bar */}
+      {gameState === 'running' && (
+        <div className="win-progress" style={{ width: `${progressWidth}%` }} />
+      )}
+
+      {/* High score */}
+      <div className="high-score-badge">
+        <div className="hs-label">Best</div>
+        <div className="hs-number">{highScore}</div>
+      </div>
+
+      {/* Score */}
+      {gameState === 'running' && (
+        <div className="score-display">
+          <div className="score-number">{score}</div>
+          <div className="score-label">Score</div>
+        </div>
+      )}
+
+      {/* Ground */}
+      <div className="ground" />
+
+      {/* Bird */}
+      {dimensions.width > 0 && (
+        <img
+          src="/diddyhead4.png"
+          alt="Diddy Bird"
+          className="bird-img"
+          style={{
+            width: birdSize,
+            height: birdSize,
+            top: birdPosition,
+            left: dimensions.width * 0.1,
+            transform: `rotate(${birdRotation}deg)`,
+          }}
+        />
+      )}
+
+      {/* Pipes */}
+      {(gameState === 'running' || gameState === 'gameOver') && dimensions.width > 0 && (
+        <>
+          <img
+            src="/babyoil2.png"
+            alt="Top pipe"
+            className="pipe-img"
+            style={{
+              width: dimensions.width * PIPE_WIDTH_RATIO,
+              top: pipeHeight,
+              left: pipePosition,
+              transform: 'translateY(-100%)',
+            }}
+          />
+          <img
+            src="/babyoil3.png"
+            alt="Bottom pipe"
+            className="pipe-img"
+            style={{
+              width: dimensions.width * PIPE_WIDTH_RATIO,
+              top: pipeHeight + (dimensions.height * PIPE_GAP_RATIO),
+              left: pipePosition,
+            }}
+          />
+        </>
+      )}
 
       {/* START SCREEN */}
       {gameState === 'idle' && (
-        <div style={screenStyle}>
-          <h1>DIDDY BIRD</h1>
-          <h3 style={{ color: '#FFD700' }}>Best: {highScore}</h3>
-          <button onClick={startGame} style={{ padding: '10px 20px', fontSize: '20px' }}>START (Space)</button>
+        <div className="overlay">
+          <div className="overlay-card">
+            <div className="win-emoji-row" style={{ animationDelay: '0s' }}>🐦💨</div>
+            <div className="overlay-title purple">DIDDY BIRD</div>
+            <div className="overlay-subtitle">Dodge the baby oil</div>
+            <button className="btn-game" onClick={(e) => { e.stopPropagation(); startGame(); }}>
+              TAKE FLIGHT
+            </button>
+            <div className="hint-text">Tap / Space to flap</div>
+          </div>
         </div>
       )}
 
       {/* GAME OVER SCREEN */}
       {gameState === 'gameOver' && (
-        <div style={screenStyle}>
-          <h1>GAME OVER</h1>
-          <h2>Score: {score}</h2>
-          <h3 style={{ color: '#FFD700', marginTop: '0' }}>High Score: {highScore}</h3>
-          <button onClick={startGame} style={{ padding: '10px 20px', fontSize: '20px' }}>RESTART (Space)</button>
+        <div className="overlay">
+          <div className="overlay-card">
+            <div className="overlay-title purple">GAME OVER</div>
+            <div className="score-reveal">
+              <div className="big-score">{score}</div>
+              <div className="big-score-label">Score</div>
+            </div>
+            {isNewRecord && <div className="new-record">🏆 New Record!</div>}
+            <button className="btn-game" onClick={(e) => { e.stopPropagation(); startGame(); }}>
+              TRY AGAIN
+            </button>
+            <div className="hint-text">Tap / Space to restart</div>
+          </div>
         </div>
       )}
 
-      {/* Score Display */}
-      {gameState === 'running' && (
-        <div style={{ position: 'absolute', top: 10, left: 10, fontSize: 24, zIndex: 10, color: 'white', fontWeight: 'bold' }}>
-          Score: {score}
-        </div>
-      )}
-
-      {/* --- BIRD --- */}
-      {dimensions.width > 0 && (
-        <img
-          src="/diddyhead4.png"
-          alt="Diddy Bird"
-          style={{
-            height: dimensions.height * BIRD_SIZE_RATIO,
-            width: dimensions.height * BIRD_SIZE_RATIO,
-            position: 'absolute',
-            top: birdPosition,
-            left: dimensions.width * 0.1,
-            transition: gameState === 'running' ? 'none' : 'top 0.1s linear'
-          }}
-        />
-      )}
-
-      {/* --- PIPES --- */}
-      {gameState === 'running' && dimensions.width > 0 && (
+      {/* WIN FLASH - shows briefly then game continues */}
+      {showWinFlash && (
         <>
-          <img
-            src="/babyoil2.png"
-            alt="Pipe"
-            style={{
-              height: pipeHeight,
-              width: dimensions.width * PIPE_WIDTH_RATIO,
-              position: 'absolute',
-              top: 0,
-              left: pipePosition,
-              transform: 'rotate(180deg)',
-              objectFit: 'cover',
-              objectPosition: 'bottom',
+          <Sparks />
+          <div
+            className="overlay win-overlay"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowWinFlash(false);
+              setPaused(false);
             }}
-          />
-          <img
-            src="/babyoil2.png"
-            alt="Pipe"
-            style={{
-              height: dimensions.height - pipeHeight - (dimensions.height * PIPE_GAP_RATIO),
-              width: dimensions.width * PIPE_WIDTH_RATIO,
-              position: 'absolute',
-              bottom: 0,
-              left: pipePosition,
-              objectFit: 'cover',
-              objectPosition: 'top',
-            }}
-          />
+          >
+            <img src="/diddybirdwin.jpeg" alt="You Win!" className="win-fullscreen-img" />
+            <div className="win-tap-hint">Tap to continue</div>
+          </div>
         </>
       )}
+
     </div>
   );
 }
