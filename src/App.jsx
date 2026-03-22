@@ -4,11 +4,12 @@ import './App.css';
 // --- CONFIG ---
 const BIRD_SIZE_RATIO = 0.07;
 const PIPE_WIDTH_RATIO = 0.09;
-const PIPE_GAP_RATIO = 0.30;
+const PIPE_GAP_RATIO = 0.35;
 const GRAVITY = 0.5;
 const JUMP_STRENGTH = -8;
-const PIPE_SPEED = 7;
+const PIPE_SPEED = 6;
 const WIN_SCORE = 10;
+const WIN_SCORE2 = 20;
 
 // Spark colors for win screen
 const SPARK_COLORS = ['#fbbf24', '#a855f7', '#ec4899', '#34d399', '#60a5fa'];
@@ -60,6 +61,7 @@ function App() {
   const [isNewRecord, setIsNewRecord] = useState(false);
   const [birdRotation, setBirdRotation] = useState(0);
   const [showWinFlash, setShowWinFlash] = useState(false);
+  const [showWinFlash2, setShowWinFlash2] = useState(false);
   const [paused, setPaused] = useState(false);
 
   // gameState: 'idle' | 'running' | 'gameOver' | 'win'
@@ -76,6 +78,7 @@ function App() {
     setIsNewRecord(false);
     setBirdRotation(0);
     setShowWinFlash(false);
+    setShowWinFlash2(false);
     setPaused(false);
     setGameState('running');
   }, [dimensions]);
@@ -126,6 +129,14 @@ function App() {
           const next = s + 1;
           if (next === WIN_SCORE) {
             setShowWinFlash(true);
+            setPaused(true);
+            if (next > highScore) {
+              setHighScore(next);
+              setIsNewRecord(true);
+              localStorage.setItem('diddyHighScore', next.toString());
+            }
+          } else if (next === WIN_SCORE2) {
+            setShowWinFlash2(true);
             setPaused(true);
             if (next > highScore) {
               setHighScore(next);
@@ -265,7 +276,7 @@ function App() {
           <div className="overlay-card">
             <div className="win-emoji-row" style={{ animationDelay: '0s' }}>🐦💨</div>
             <div className="overlay-title purple">DIDDY BIRD</div>
-            <div className="overlay-subtitle">Dodge the baby oil</div>
+            <div className="overlay-subtitle">Dodge the baby oil! <br />what happens when you get 10 points? what about 20? <br /> lets find out!</div>
             <button className="btn-game" onClick={(e) => { e.stopPropagation(); startGame(); }}>
               TAKE FLIGHT
             </button>
@@ -305,6 +316,24 @@ function App() {
             }}
           >
             <img src="/diddybirdwin.jpeg" alt="You Win!" className="win-fullscreen-img" />
+            <div className="win-tap-hint">Tap to continue</div>
+          </div>
+        </>
+      )}
+
+      {/* WIN FLASH 2- shows briefly then game continues */}
+      {showWinFlash2 && (
+        <>
+          <Sparks />
+          <div
+            className="overlay win-overlay"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowWinFlash2(false);
+              setPaused(false);
+            }}
+          >
+            <img src="/diddybirdwin2.jpeg" alt="You Win!" className="win-fullscreen-img" />
             <div className="win-tap-hint">Tap to continue</div>
           </div>
         </>
